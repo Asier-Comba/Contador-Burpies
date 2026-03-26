@@ -36,19 +36,39 @@ const FRASES_LLADOS = [
   '¡Deja de saltar como un mileurista y haz el burpee bien!',
 ];
 
+function getVozES() {
+  const voces = window.speechSynthesis.getVoices();
+  return (
+    voces.find(v => v.lang === 'es-ES') ||
+    voces.find(v => v.lang.startsWith('es')) ||
+    null
+  );
+}
+
 function sayMileurista() {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const frase = FRASES_LLADOS[Math.floor(Math.random() * FRASES_LLADOS.length)];
-  const utter = new SpeechSynthesisUtterance(frase);
-  utter.lang = 'es-ES';
-  utter.rate = 1.05;
-  utter.pitch = 1.1;
-  // Intentar coger una voz en español
-  const voces = window.speechSynthesis.getVoices();
-  const vozenES = voces.find(v => v.lang.startsWith('es'));
-  if (vozenES) utter.voice = vozenES;
-  window.speechSynthesis.speak(utter);
+
+  function speak() {
+    const utter = new SpeechSynthesisUtterance(frase);
+    utter.lang = 'es-ES';
+    utter.rate = 1.1;
+    utter.pitch = 1.15;
+    utter.volume = 1;
+    const voz = getVozES();
+    if (voz) utter.voice = voz;
+    window.speechSynthesis.speak(utter);
+  }
+
+  // Si las voces ya están cargadas, hablar ahora
+  if (window.speechSynthesis.getVoices().length > 0) {
+    speak();
+  } else {
+    // Esperar a que se carguen
+    window.speechSynthesis.addEventListener('voiceschanged', speak, { once: true });
+  }
+
   return frase;
 }
 
