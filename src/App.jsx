@@ -27,11 +27,13 @@ const THRESHOLD_UP   = 0.38; // nose_y < este valor → consideramos que está a
 const THRESHOLD_JUMP = 0.28; // nose_y < este valor durante fase UP → ¡salto de mileurista!
 
 const FRASES_LLADOS = [
-  '¡Ese salto es de mileurista, tío!',
-  '¡Con ese salto no llegas ni a becario!',
-  '¡El salto más de mileurista que he visto en mi vida!',
-  '¡Eso no es un salto, eso es una decepción!',
-  '¡Salta más alto, que así no vas a ningún lado!',
+  '¡El burpee no lleva salto, mileurista!',
+  '¡Para, para, para! ¡El burpee no se salta!',
+  '¡Eso del salto es de gente que no sabe entrenar!',
+  '¡El salto en el burpee es de mileurista, quítalo!',
+  '¡Nadie que gane dinero de verdad salta en el burpee!',
+  '¡El burpee sin salto, así se hace la pasta!',
+  '¡Deja de saltar como un mileurista y haz el burpee bien!',
 ];
 
 function sayMileurista() {
