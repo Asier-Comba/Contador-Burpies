@@ -24,6 +24,31 @@ const CONNECTIONS = [
 // + altura de las caderas para mayor robustez
 const THRESHOLD_DOWN = 0.52; // nose_y > este valor → consideramos que está abajo
 const THRESHOLD_UP   = 0.38; // nose_y < este valor → consideramos que está arriba
+const THRESHOLD_JUMP = 0.28; // nose_y < este valor durante fase UP → ¡salto de mileurista!
+
+const FRASES_LLADOS = [
+  '¡Ese salto es de mileurista, tío!',
+  '¡Con ese salto no llegas ni a becario!',
+  '¡El salto más de mileurista que he visto en mi vida!',
+  '¡Eso no es un salto, eso es una decepción!',
+  '¡Salta más alto, que así no vas a ningún lado!',
+];
+
+function sayMileurista() {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const frase = FRASES_LLADOS[Math.floor(Math.random() * FRASES_LLADOS.length)];
+  const utter = new SpeechSynthesisUtterance(frase);
+  utter.lang = 'es-ES';
+  utter.rate = 1.05;
+  utter.pitch = 1.1;
+  // Intentar coger una voz en español
+  const voces = window.speechSynthesis.getVoices();
+  const vozenES = voces.find(v => v.lang.startsWith('es'));
+  if (vozenES) utter.voice = vozenES;
+  window.speechSynthesis.speak(utter);
+  return frase;
+}
 
 function estimatePhase(kp, frameH) {
   const nose = kp[0];
@@ -53,13 +78,16 @@ export default function App() {
   const canvasRef  = useRef(null);
   const detectorRef = useRef(null);
   const animRef    = useRef(null);
-  const phaseRef   = useRef('up'); // fase actual del movimiento
+  const phaseRef      = useRef('up'); // fase actual del movimiento
+  const activeRef     = useRef(false);
+  const jumpFiredRef  = useRef(false); // evitar repetir el mensaje en el mismo salto
 
-  const [status, setStatus]   = useState('idle');
-  const [reps, setReps]       = useState(0);
-  const [phase, setPhase]     = useState('up');
-  const [error, setError]     = useState('');
-  const [feedback, setFeedback] = useState('');
+  const [status, setStatus]       = useState('idle');
+  const [reps, setReps]           = useState(0);
+  const [phase, setPhase]         = useState('up');
+  const [error, setError]         = useState('');
+  const [feedback, setFeedback]   = useState('');
+  const [mileurista, setMileurista] = useState('');
 
   async function start() {
     setStatus('loading');
@@ -67,6 +95,8 @@ export default function App() {
     phaseRef.current = 'up';
     setPhase('up');
     setFeedback('');
+    setMileurista('');
+    jumpFiredRef.current = false;
 
     let stream;
     try {
@@ -77,6 +107,7 @@ export default function App() {
       await new Promise(res => { videoRef.current.onloadedmetadata = res; });
       videoRef.current.play();
       if (!detectorRef.current) detectorRef.current = await loadDetector();
+      activeRef.current = true;
       setStatus('running');
       loop();
     } catch (e) {
@@ -87,6 +118,7 @@ export default function App() {
   }
 
   function stop() {
+    activeRef.current = false;
     cancelAnimationFrame(animRef.current);
     videoRef.current?.srcObject?.getTracks().forEach(t => t.stop());
     setStatus('idle');
@@ -94,7 +126,11 @@ export default function App() {
 
   function loop() {
     animRef.current = requestAnimationFrame(async () => {
-      if (!videoRef.current || !detectorRef.current || !canvasRef.current) return;
+      if (!activeRef.current) return;
+      if (!videoRef.current || !detectorRef.current || !canvasRef.current) {
+        loop(); // esperar a que el canvas esté montado
+        return;
+      }
       try {
         const poses = await detectorRef.current.estimatePoses(videoRef.current);
         if (poses[0]) {
@@ -108,11 +144,27 @@ export default function App() {
 
   function processKeypoints(kp) {
     const h = videoRef.current?.videoHeight || 480;
+    const nose = kp[0];
     const detectedPhase = estimatePhase(kp, h);
-    if (!detectedPhase) return; // zona intermedia
+
+    // Detección de salto: nariz muy alta durante fase UP
+    if (nose?.score > 0.3 && phaseRef.current === 'up') {
+      const noseNorm = nose.y / h;
+      if (noseNorm < THRESHOLD_JUMP && !jumpFiredRef.current) {
+        jumpFiredRef.current = true;
+        const frase = sayMileurista();
+        setMileurista(frase);
+        setTimeout(() => setMileurista(''), 3500);
+      }
+      // Resetear cuando baja (para poder dispararlo de nuevo en el siguiente salto)
+      if (noseNorm > THRESHOLD_UP) jumpFiredRef.current = false;
+    }
+
+    if (!detectedPhase) return;
 
     if (detectedPhase === 'down' && phaseRef.current === 'up') {
       phaseRef.current = 'down';
+      jumpFiredRef.current = false;
       setPhase('down');
       setFeedback('¡Al suelo!');
     } else if (detectedPhase === 'up' && phaseRef.current === 'down') {
@@ -242,6 +294,13 @@ export default function App() {
             {feedback && (
               <div style={s.feedbackBadge}>{feedback}</div>
             )}
+            {mileurista && (
+              <div style={s.mileuristaBanner}>
+                <span style={{ fontSize: 22 }}>💸</span>
+                <span>{mileurista}</span>
+                <span style={{ fontSize: 22 }}>💸</span>
+              </div>
+            )}
           </div>
 
           <div style={s.panel}>
@@ -312,13 +371,25 @@ const s = {
     display: 'flex', flexWrap: 'wrap', gap: 24,
     alignItems: 'flex-start', justifyContent: 'center', width: '100%',
   },
-  canvasWrapper: { position: 'relative' },
+  canvasWrapper: { position: 'relative', display: 'inline-block' },
   feedbackBadge: {
     position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
     background: 'rgba(0,255,153,0.15)', border: '1px solid #00ff99',
     color: '#00ff99', fontWeight: 800, fontSize: 22, padding: '6px 24px',
     borderRadius: 50, backdropFilter: 'blur(6px)',
     animation: 'fadeIn 0.15s ease',
+  },
+  mileuristaBanner: {
+    position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+    whiteSpace: 'nowrap',
+    background: 'rgba(255, 200, 0, 0.15)',
+    border: '2px solid #ffcc00',
+    color: '#ffcc00', fontWeight: 800, fontSize: 17,
+    padding: '10px 22px', borderRadius: 12,
+    backdropFilter: 'blur(8px)',
+    display: 'flex', alignItems: 'center', gap: 10,
+    animation: 'fadeIn 0.2s ease',
+    boxShadow: '0 0 20px rgba(255,200,0,0.3)',
   },
   panel: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
